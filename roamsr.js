@@ -175,7 +175,15 @@
         '[:find (pull ?answer [:block/uid :block/string]) :where [?question :block/children ?answer] [?question :block/uid "' +
           uid +
           '"]]'
-      )[0][0];
+      );
+
+      if (answer[0]) {
+        answer = answer[0][0];
+      } else {
+        answer = {};
+        answer.uid = "";
+        answer.string = "(No answer.)";
+      }
 
       // Create new url
       const nextPromptUrl = roamsr.baseUrl().hash + "/page/" + uid;
@@ -196,7 +204,6 @@
           roamsr.showBlockRefs(false);
 
           // If there's no answer, assign default text
-          if (!answer) answer.string = "No nested blocks.";
 
           // Find container to add elements
           var container = document.querySelector(".roam-block-container");
@@ -278,7 +285,7 @@
     } else {
       // Going home
       window.onhashchange = () => {};
-      location.assign("/" + roamsr.baseUrl().hash);
+      // location.assign("/" + roamsr.baseUrl().hash);
 
       roamsr.setStyle(false);
 
