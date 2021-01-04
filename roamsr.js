@@ -1,4 +1,4 @@
-() => {};
+() => { };
 
 (() => {
   console.log("Successfully (re)loaded roam-sr.js...");
@@ -27,7 +27,7 @@
       const existingRoamSR = document.getElementById(roamsr.scriptId);
       if (existingRoamSR)
         document.getElementsByTagName("head")[0].removeChild(existingRoamSR);
-    } catch (e) {}
+    } catch (e) { }
     roamsr.mode = false;
     roamsr.addScriptToPage();
   };
@@ -105,8 +105,8 @@
 
   // simulateClick by by Viktor Tabori
   roamsr.simulateClick = (element, events, leftButton, opts) => {
-    setTimeout(function() {
-      events.forEach(function(type) {
+    setTimeout(function () {
+      events.forEach(function (type) {
         var _event = new MouseEvent(type, {
           view: window,
           bubbles: true,
@@ -137,9 +137,10 @@
     return Math.floor(nextInterval);
   };
   roamsr.clickAndGo = async (time, yes) => {
-    var question = document.querySelector(".rm-level1 .rm-block-text");
+    window.onhashchange = async () => { }
+    var question = document.querySelector(".rm-zoom-item:nth-child(2)");
     var delta = document.querySelector("[data-tag='sr'] + span");
-    +roamsr.simulateClick(question, ["mousedown", "click", "mouseup"], true);
+    roamsr.simulateClick(question, ["mousedown", "click", "mouseup"], true);
     await roamsr.sleep(time);
 
     var txtarea = document.activeElement;
@@ -191,8 +192,8 @@
       // Pull answer
       var answer = window.roamAlphaAPI.q(
         '[:find (pull ?answer [:block/uid :block/string]) :where [?question :block/children ?answer] [?question :block/uid "' +
-          uid +
-          '"]]'
+        uid +
+        '"]]'
       );
 
       // Check if there's no answer
@@ -228,7 +229,7 @@
 
   roamsr.addCustomElements = answer => {
     // Find container to add elements
-    var container = document.querySelector(".roam-block-container");
+    var container = document.querySelector(".roam-article");
 
     // Define "Show answer." button
     var showAnswerButton = document.createElement("button");
@@ -236,27 +237,22 @@
     showAnswerButton.innerHTML = "Show answer.";
     showAnswerButton.classList.add("roamsr-show-answer-button", "bp3-button");
 
-    // Define answer area
-
-    var answerArea = document.createElement("div");
-    answerArea.id = "answer-area";
-    answerArea.innerHTML = answer.string;
-    answerArea.hidden = true;
-    answerArea.classList.add("roamsr-show-answer-button");
-
     // Add both
     const prevShowAnswerButton = document.getElementById(showAnswerButton.id);
     if (prevShowAnswerButton) container.removeChild(prevShowAnswerButton);
     container.appendChild(showAnswerButton);
 
-    const prevAnswerArea = document.getElementById(answerArea.id);
-    if (prevAnswerArea) container.removeChild(prevAnswerArea);
-    container.appendChild(answerArea);
-
     // Click event on "Show answer." button
-    showAnswerButton.onclick = () => {
+    showAnswerButton.onclick = async () => {
+      const answerUrl = roamsr.baseUrl().hash + "/page/" + answer.uid;
+      location.assign("/" + answerUrl);
+      window.onhashchange = async () => {
+        location.assign("/" + answerUrl);
+      }
+      await roamsr.sleep(50);
+
+
       showAnswerButton.hidden = true;
-      answerArea.hidden = false;
 
       // Show clozes
       roamsr.showBlockRefs(true);
@@ -268,14 +264,14 @@
       yesButton.innerHTML =
         "Remembered.<sup>" + roamsr.calculateNextInterval(true) + "d</sup>";
       yesButton.classList.add("roamsr-yesno-button", "bp3-button");
-      yesButton.onclick = () => roamsr.clickAndGo(200, true);
+      yesButton.onclick = () => roamsr.clickAndGo(500, true);
 
       var noButton = document.createElement("button");
       noButton.id = "no-button";
       noButton.innerHTML =
         "Forgotten.<sup>" + roamsr.calculateNextInterval(false) + "d</sup>";
       noButton.classList.add("roamsr-yesno-button", "bp3-button");
-      noButton.onclick = () => roamsr.clickAndGo(200, false);
+      noButton.onclick = () => roamsr.clickAndGo(500, false);
 
       responseArea.appendChild(noButton);
       responseArea.appendChild(yesButton);
@@ -284,7 +280,7 @@
     };
   };
 
-  roamsr.showAnswer = () => {};
+  roamsr.showAnswer = () => { };
 
   // Start review session function
   roamsr.review = () => {
@@ -312,7 +308,7 @@
       roamsr.review();
     } else {
       // Going home
-      window.onhashchange = () => {};
+      window.onhashchange = () => { };
       location.assign("/" + roamsr.baseUrl().hash);
 
       roamsr.setStyle(false);
