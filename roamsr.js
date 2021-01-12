@@ -36,10 +36,13 @@
   // --- Review ---
   // --------------
 
-  // --- Variables ---
+  // --- Settings ---
+  roamsr.time = 200;
+  roamsr.easeFactor = 2.5;
 
+  // --- Variables ---
   roamsr.prompts = {};
-  roamsr.promptCounter = 0;
+  roamsr.promptCounter = -1;
   roamsr.mode = false;
   roamsr.styleID = "roamsrCSS";
   roamsr.baseUrl = () => {
@@ -48,18 +51,23 @@
     url.hash = parts.slice(0, 3).join("/");
     return url;
   };
+  roamsr.regex = /[0-9]+(?=\+0\}\})/g;
+
 
   // --- Helper functions ---
 
-  // Sleep promis
+  // Sleep promise
   roamsr.sleep = m => new Promise(r => setTimeout(r, m));
 
-  // Show/hide delta buttons
-  roamsr.showDelta = show => {
-    document
-      .querySelectorAll(".rm-orbit-tag")
-      .forEach(delta => (delta.style.visibility = show ? "visible" : "hidden"));
-  };
+  // Add element to target
+  roamsr.addElement = (element, target) => {
+    const prevElement = document.getElementById(element.id);
+    if (prevElement)
+      target.removeChild(prevElement);
+    target.appendChild(element);
+  }
+
+  // Cloze deletion
   roamsr.showBlockRefs = show => {
     document.querySelectorAll(".rm-block-ref").forEach(blockref => {
       blockref.classList.toggle("rm-block-ref-show", show);
@@ -89,18 +97,23 @@
   // Load prompts due
   roamsr.loadPromptsDue = () => {
     // Find all blocks referencing [[sr]] and [[∆]]
-    roamsr.prompts = window.roamAlphaAPI.q(
+    roamsr.oldPrompts = window.roamAlphaAPI.q(
       '[:find (pull ?question [:block/uid :block/string]) (pull ?dailyNote [:block/uid]) :where [?question :block/refs ?srPage] [?srPage :node/title "sr"] [?question :block/refs ?deltaPage] [?deltaPage :node/title "∆"] [?dailyNote :block/children ?question]]'
     );
+    roamsr.newPrompts = window.roamAlphaAPI.q(
+      '[:find (pull ?question [:block/uid :block/string]) :where [?question :block/refs ?srPage] [?srPage :node/title "sr"] (not-join [?question] [?question :block/refs ?deltaPage] [?deltaPage :node/title "∆"]) (not-join [?question] [?question :block/refs ?rmoved] [?rmoved :node/title "r/moved"]) (not-join [?question] [?question :block/refs ?query] [?query :node/title "query"])]');
+
     // Filter only for prompts on daily pages and those that are before today
-    roamsr.prompts = roamsr.prompts.filter(
+    roamsr.oldPrompts = roamsr.oldPrompts.filter(
       prompt =>
         Date.parse(prompt[1].uid) && Date.parse(prompt[1].uid) <= new Date()
     );
     // Sort by date
-    roamsr.prompts = roamsr.prompts.sort(
+    roamsr.oldPrompts = roamsr.oldPrompts.sort(
       (a, b) => Date.parse(a[1].uid) - Date.parse(b[1].uid)
     );
+
+    roamsr.prompts = roamsr.newPrompts.concat(roamsr.oldPrompts).concat(roamsr.newPrompts);
   };
 
   // simulateClick by by Viktor Tabori
@@ -120,59 +133,79 @@
     }, 0);
   };
 
+  roamsr.getInterval = () => {
+    return roamsr.prompts[roamsr.promptCounter][0].string.match(roamsr.regex);
+  }
+
   // --- Main functions ---
 
   // Delta workaround for SM2
   roamsr.calculateNextInterval = yes => {
-    var easeFactor = 2.5;
-    const content = roamsr.prompts[roamsr.promptCounter - 1][0].string;
-    var prevInterval = parseInt(content.match(/[0-9]+(?=\+0\}\})/g));
-    console.log(prevInterval);
-    var nextInterval = 1;
-    if (yes) {
-      if (prevInterval == 0) nextInterval = 1;
-      else if (prevInterval == 1) nextInterval = 6;
-      else nextInterval = prevInterval * easeFactor;
-    } else nextInterval = 1;
-    return Math.floor(nextInterval);
+    var nextInterval;
+    var prev = roamsr.getInterval();
+
+    if (prev && yes) {
+      if (prev == 0) nextInterval = [1, "d"];
+      else if (prev == 1) nextInterval = [6, "d"];
+      else nextInterval = [Math.floor(prev * roamsr.easeFactor), "d"];
+    } else  {
+      nextInterval = [10, "min"];
+    }
+
+    return nextInterval;
   };
-  roamsr.clickAndGo = async (time, yes) => {
+
+  roamsr.clickAndGo = async (yes) => {
     window.onhashchange = async () => { }
-    var question = document.querySelector(".rm-zoom-item:nth-child(2)");
-    var delta = document.querySelector("[data-tag='sr'] + span");
-    roamsr.simulateClick(question, ["mousedown", "click", "mouseup"], true);
-    await roamsr.sleep(time);
 
-    var txtarea = document.activeElement;
-    var newValue = txtarea.value.replace(
-      /[0-9]+(?=\+0\}\})/g,
-      roamsr.calculateNextInterval(yes)
-    );
-    //.replace("#sr {{[[∆]]:1+0}} {{[[∆]]:1*2}}", "pog");
-    var setValue = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      "value"
-    ).set;
-    setValue.call(txtarea, newValue);
-    var e = new Event("input", { bubbles: true });
-    txtarea.dispatchEvent(e);
+    if (yes) {
+      // Click into main block
+      var question = document.querySelector(".rm-block-main .roam-block");
+      roamsr.simulateClick(question, ["mousedown", "click", "mouseup"], true);
 
-    await roamsr.sleep(time);
+      await roamsr.sleep(roamsr.time);
 
-    roamsr.simulateClick(
-      document.querySelector(".roam-main"),
-      ["mousedown", "click", "mouseup"],
-      true
-    );
-    await roamsr.sleep(time);
+      // Update delta value
+      var txtarea = document.activeElement;
 
-    delta = document.querySelector("[data-tag='sr'] + span");
+      var newValue;
+      if (roamsr.getInterval()) {
+        newValue = txtarea.value.replace(roamsr.regex, roamsr.calculateNextInterval(yes)[0]);
+      } else {
+        newValue = txtarea.value + " {{[[∆]]:0+0}}"
+      }
 
-    roamsr.simulateClick(delta, ["mousedown", "click", "mouseup"], true, {
-      shiftKey: true
-    });
+      var setValue = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value"
+      ).set;
+      setValue.call(txtarea, newValue);
+      var e = new Event("input", { bubbles: true });
+      txtarea.dispatchEvent(e);
 
-    await roamsr.sleep(time);
+      await roamsr.sleep(roamsr.time);
+
+      // Click away
+      roamsr.simulateClick(
+        document.querySelector(".roam-main"),
+        ["mousedown", "click", "mouseup"],
+        true
+      );
+
+      await roamsr.sleep(roamsr.time);
+
+      // Click delta
+      var delta = document.querySelector("[data-tag='sr'] + span");
+      roamsr.simulateClick(delta, ["mousedown", "click", "mouseup"], true, {
+        shiftKey: true
+      });
+
+      await roamsr.sleep(roamsr.time);
+    }
+    else {
+      roamsr.prompts.push(roamsr.prompts[roamsr.promptCounter]);
+      roamsr.prompts.shift();
+    }
 
     roamsr.goToNextPrompt();
   };
@@ -180,113 +213,112 @@
   // Go to next prompt
   roamsr.goToNextPrompt = () => {
     // Check if there are more prompts
-    if (!roamsr.prompts[roamsr.promptCounter - 1 + 1]) {
-      // If there are no new prompts, end session
+    if (!roamsr.prompts[roamsr.promptCounter + 1]) {
       roamsr.setMode(false);
     } else {
       // Bump counter
       roamsr.promptCounter += 1;
 
-      // Define uid
-      const uid = roamsr.prompts[roamsr.promptCounter - 1][0].uid;
-      // Pull answer
-      var answer = window.roamAlphaAPI.q(
-        '[:find (pull ?answer [:block/uid :block/string]) :where [?question :block/children ?answer] [?question :block/uid "' +
-        uid +
-        '"]]'
-      );
-
-      // Check if there's no answer
-      if (answer[0]) {
-        answer = answer[0][0];
-      } else {
-        answer = {};
-        answer.uid = "";
-        answer.string = "(No answer.)";
-      }
+      // Update widget
+      roamsr.counterWidget();
 
       // Create new url
-      const nextPromptUrl = roamsr.baseUrl().hash + "/page/" + uid;
+      const nextPromptUrl = roamsr.baseUrl().hash + "/page/" + roamsr.prompts[roamsr.promptCounter][0].uid;
 
-      // Force redirect to current prompt
+      // Force redirect to next prompt
       window.onhashchange = async () => {
-        // Jump back, no distractions bitch!
-        location.assign("/" + nextPromptUrl);
-        // Wait for page to load (100 ms)
+        location.assign("/" + nextPromptUrl); // Jump back, no distractions bitch!
         await roamsr.sleep(100);
-        // Hide Delta
-        roamsr.showDelta(false);
-        roamsr.showBlockRefs(false);
+        roamsr.showBlockRefs(false); // Cloze deletion
+        roamsr.addCustomElements();
 
-        roamsr.addCustomElements(answer);
+        // Hide answer
+        document.querySelector(".rm-block-children").style.display = "none";
       };
 
-      // Jump to next url
+      // Go to the next prompt
       console.log("Jumping to next prompt: " + nextPromptUrl);
       location.assign("/" + nextPromptUrl);
     }
   };
 
-  roamsr.addCustomElements = answer => {
+  roamsr.addCustomElements = () => {
     // Find container to add elements
     var container = document.querySelector(".roam-article");
 
-    // Define "Show answer." button
-    var showAnswerButton = document.createElement("button");
-    showAnswerButton.id = "show-answer-button";
-    showAnswerButton.innerHTML = "Show answer.";
-    showAnswerButton.classList.add("roamsr-show-answer-button", "bp3-button");
+    var responseArea = Object.assign(document.createElement("div"), { className: "roamsr-response-area" });
 
-    // Add both
-    const prevShowAnswerButton = document.getElementById(showAnswerButton.id);
-    if (prevShowAnswerButton) container.removeChild(prevShowAnswerButton);
-    container.appendChild(showAnswerButton);
+    roamsr.addElement(responseArea, container);
+
+    // Add "Show answer." button
+    var showAnswerButton = Object.assign(document.createElement("button"), {
+      id: "show-answer-button",
+      innerHTML: "Show answer.",
+      className: "roamsr-show-answer-button bp3-button"
+    });
+
+    roamsr.addElement(showAnswerButton, responseArea);
 
     // Click event on "Show answer." button
     showAnswerButton.onclick = async () => {
-      const answerUrl = roamsr.baseUrl().hash + "/page/" + answer.uid;
-      location.assign("/" + answerUrl);
-      window.onhashchange = async () => {
-        location.assign("/" + answerUrl);
-      }
-      await roamsr.sleep(50);
-
-
+      // Show answer
+      document.querySelector(".rm-block-children").style.display = "flex";
       showAnswerButton.hidden = true;
 
       // Show clozes
       roamsr.showBlockRefs(true);
 
-      var responseArea = document.createElement("div");
-      responseArea.classList.add("roamsr-response-area");
-      var yesButton = document.createElement("button");
-      yesButton.id = "yes-button";
-      yesButton.innerHTML =
-        "Remembered.<sup>" + roamsr.calculateNextInterval(true) + "d</sup>";
-      yesButton.classList.add("roamsr-yesno-button", "bp3-button");
-      yesButton.onclick = () => roamsr.clickAndGo(500, true);
+      var nextInterval = (yes) => { return roamsr.calculateNextInterval(yes)[0] + " " + roamsr.calculateNextInterval(yes)[1] };
 
-      var noButton = document.createElement("button");
-      noButton.id = "no-button";
-      noButton.innerHTML =
-        "Forgotten.<sup>" + roamsr.calculateNextInterval(false) + "d</sup>";
-      noButton.classList.add("roamsr-yesno-button", "bp3-button");
-      noButton.onclick = () => roamsr.clickAndGo(500, false);
+      var yesButton = Object.assign(document.createElement("button"), {
+        id: "yes-button",
+        innerHTML:
+          "Remembered.<sup>" + nextInterval(true) + "</sup>",
+        className: "roamsr-yesno-button bp3-button",
+        onclick: () => { container.removeChild(responseArea); roamsr.clickAndGo(true) }
+      });
 
-      responseArea.appendChild(noButton);
-      responseArea.appendChild(yesButton);
+      var noButton = Object.assign(document.createElement("button"), {
+        id: "no-button",
+        innerHTML:
+          "Forgotten.<sup>" + nextInterval(false) + "</sup>",
+        className: "roamsr-yesno-button bp3-button",
+        onclick: () => { container.removeChild(responseArea); roamsr.clickAndGo(false) }
+      });
 
-      container.appendChild(responseArea);
+      var justLearnedButton = Object.assign(document.createElement("button"), {
+        id: "just-learned-button",
+        innerHTML:
+          "Just learned.<sup>" + nextInterval(true) + "</sup>",
+        className: "roamsr-yesno-button bp3-button",
+        onclick: () => { container.removeChild(responseArea); roamsr.clickAndGo(true) }
+      });
+
+      responseArea.removeChild(showAnswerButton);
+
+      if (roamsr.getInterval()) {
+        roamsr.addElement(noButton, responseArea);
+        roamsr.addElement(yesButton, responseArea);
+      } else {
+        roamsr.addElement(justLearnedButton, responseArea);
+      }
     };
   };
-
-  roamsr.showAnswer = () => { };
+  
+  roamsr.counterWidget = () => {
+    var widget = Object.assign(document.createElement("div"), {
+      id: "roamsr-counter-widget",
+      innerHTML: (roamsr.promptCounter + 1) + " / " + roamsr.prompts.length,
+      className: "roamsr-counter-widget"
+    })
+    roamsr.addElement(widget, topbar);
+  }
 
   // Start review session function
   roamsr.review = () => {
     console.log("Starting session.");
 
-    roamsr.promptCounter = 0;
+    roamsr.promptCounter = -1;
 
     // Reload prompts
     roamsr.loadPromptsDue();
@@ -311,6 +343,8 @@
       window.onhashchange = () => { };
       location.assign("/" + roamsr.baseUrl().hash);
 
+      topbar.removeChild(document.getElementById("roamsr-counter-widget"));
+      
       roamsr.setStyle(false);
 
       console.log("Ending session.");
@@ -325,73 +359,84 @@
 
   // --- Visual elements ---
 
-  // Remove past buttons
-  var prevReview = document.querySelector("#roamsr-review-button");
-  var prevRefresh = document.querySelector("#roamsr-refresh-button");
-  if (prevReview) {
-    prevReview.remove();
-  }
-  if (prevRefresh) {
-    prevRefresh.remove();
-  }
+  var topbar = document
+    .querySelector(".roam-topbar .flex-h-box");
 
   // Adding toggle button on the top right
-  roamsr.toggleModeButton = document.createElement("div");
-  roamsr.toggleModeButton.id = "roamsr-review-button";
-  roamsr.toggleModeButton.className = "bp3-button bp3-minimal bp3-small";
-  roamsr.toggleModeButton.style.color = "#5c7080";
-  roamsr.toggleModeButton.innerHTML =
-    "<img src='https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2Fnotemap%2F1TUIZqQWcJ.svg?alt=media&token=a624be01-967e-43ce-8688-0b50d898b428'>";
-  roamsr.toggleModeButton.setAttribute("style", "position:relative;left:2px");
-  roamsr.toggleModeButton.onclick = () => roamsr.setMode(!roamsr.mode);
+  var toggleModeButton = Object.assign(document.createElement("div"), {
+    id: "roamsr-review-button",
+    className: "bp3-button bp3-minimal bp3-small",
+    style: {
+      cssText: "color: #5c7080; position:relative; left:2px"
+    },
+    innerHTML:
+      "<img src='https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2Fnotemap%2F1TUIZqQWcJ.svg?alt=media&token=a624be01-967e-43ce-8688-0b50d898b428'>",
+    onclick: () => roamsr.setMode(!roamsr.mode)
+  });
 
-  document
-    .querySelector(".roam-topbar .flex-h-box")
-    .appendChild(roamsr.toggleModeButton);
+  var refreshButton = Object.assign(document.createElement("div"), {
+    id: "roamsr-refresh-button",
+    className: "bp3-button bp3-minimal bp3-small bp3-icon-refresh",
+    style: {
+      cssText: "position:relative; left:2px"
+    },
+    onclick: roamsr.testingReload
+  });
 
-  var refreshButton = document.createElement("div");
-  refreshButton.id = "roamsr-refresh-button";
-  refreshButton.className = "bp3-button bp3-minimal bp3-small bp3-icon-refresh";
-  refreshButton.setAttribute("style", "position:relative;left:2px");
-  refreshButton.onclick = roamsr.testingReload;
+  roamsr.addElement(toggleModeButton, topbar);
+  roamsr.addElement(refreshButton, topbar);
 
-  document.querySelector(".roam-topbar .flex-h-box").appendChild(refreshButton);
-
-  // ---------------------
-  // --- Card creation ---
-  // ---------------------
-
-  // Replace delta with SR widget function
-  roamsr.replaceDelta = () => {
-    setTimeout(() => {
-      var txtarea = document.activeElement;
-      var newValue = txtarea.value
-        .replace("{{[[∆]]:1+2}}", "")
-        .concat("#sr {{[[∆]]:0+0}}");
-      var setValue = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype,
-        "value"
-      ).set;
-      setValue.call(txtarea, newValue);
-      var e = new Event("input", { bubbles: true });
-      txtarea.dispatchEvent(e);
-    }, 50);
-  };
-  roamsr.handleKeyEvent = ev => {
-    // console.log("alt: " + ev.altKey + "  shift: " + ev.shiftKey + "  ctrl: " + ev.ctrlKey + "   code: " + ev.code);
-    // Alt+S keybinding
-    if (ev.altKey && ev.shiftKey && ev.code == "KeyS") {
-      ev.preventDefault();
-      roamsr.replaceDelta();
-      return;
-    }
-    // Alt+d to end session
-    if (ev.altKey && !ev.shiftKey && ev.code == "KeyD" && roamsr.mode) {
-      roamsr.setMode(false);
-    }
-  };
-
-  // Add keybindings
-  document.addEventListener("keydown", roamsr.handleKeyEvent);
   console.log("...and got to the end!");
 })();
+
+
+
+// Unused / old functions
+
+
+// ---------------------
+// --- Card creation ---
+// ---------------------
+
+
+// Replace delta with SR widget function
+roamsr.replaceDelta = () => {
+  setTimeout(() => {
+    var txtarea = document.activeElement;
+    var newValue = txtarea.value
+      .replace("{{[[∆]]:1+2}}", "")
+      .concat("#sr {{[[∆]]:0+0}}");
+    var setValue = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      "value"
+    ).set;
+    setValue.call(txtarea, newValue);
+    var e = new Event("input", { bubbles: true });
+    txtarea.dispatchEvent(e);
+  }, 50);
+};
+
+roamsr.handleKeyEvent = ev => {
+  // console.log("alt: " + ev.altKey + "  shift: " + ev.shiftKey + "  ctrl: " + ev.ctrlKey + "   code: " + ev.code);
+  // Alt+S keybinding
+  if (ev.altKey && ev.shiftKey && ev.code == "KeyS") {
+    ev.preventDefault();
+    roamsr.replaceDelta();
+    return;
+  }
+  // Alt+d to end session
+  if (ev.altKey && !ev.shiftKey && ev.code == "KeyD" && roamsr.mode) {
+    roamsr.setMode(false);
+  }
+};
+
+// Add keybindings
+document.addEventListener("keydown", roamsr.handleKeyEvent);
+
+
+// Show/hide delta buttons
+roamsr.showDelta = show => {
+  document
+    .querySelectorAll(".rm-orbit-tag")
+    .forEach(delta => (delta.style.visibility = show ? "visible" : "hidden"));
+};
