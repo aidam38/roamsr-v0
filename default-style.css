@@ -1,0 +1,94 @@
+/* Global styling */
+.roam-app, .roam-topbar {
+  background-color: #eeeeee !important;
+}
+
+#roamsr-review-button {
+  background-color: #cccccc;
+  filter: invert(1);
+}
+
+/* To hide */
+.roam-topbar div span, .roam-topbar div {
+  visibility: hidden;
+}
+#roamsr-review-button, #roamsr-counter-widget span {
+  visibility: visible;
+}
+#buffer,
+.rm-reference-container,
+.rm-block-children
+{
+  display: none;  
+}
+
+/* Widget styling */
+#roamsr-counter-widget {
+  position: absolute;
+  width: 100%;
+  text-align: center;
+}
+#roamsr-counter-widget span {
+  margin-right: 10px;
+}
+
+/* Hiding the #h tag and delta from question */
+.rm-orbit-tag, [data-tag="h"] {
+  display: none;
+}
+
+/* Cloze deletion */
+.rm-block-ref {
+  background-color: #cccccc;
+  color: #cccccc;
+}
+.rm-block-ref-show {
+  background-color: inherit;
+  color: inherit;
+}
+.rm-block-ref-show span::before, .rm-block-ref span::after{
+  content: "";
+}
+
+/* Custom elements button */
+.roamsr-show-answer-button, .roamsr-answer, .roamsr-yesno-button {
+  border: 0px;
+  background-color: #eeeeee;
+  color: #555555;
+  margin: 20px;
+  padding: 20px;
+  font-size: 1.4em;
+}
+.roamsr-response-area {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .roamsr-response-area {
+    margin: 0 0 0 -24px;
+    width: 100%;
+    position: fixed !important;
+    bottom: 100px;
+  }
+}
+
+/* Disabling Roam Toolkit */
+.roam-toolkit--hint0::after,
+.roam-toolkit--hint1::after,
+.roam-toolkit--hint2::after,
+.roam-toolkit--hint3::after,
+.roam-toolkit--hint4::after,
+.roam-toolkit--hint5::after,
+.roam-toolkit--hint6::after,
+.roam-toolkit--hint7::after,
+.roam-toolkit--hint8::after,
+.roam-toolkit--hint9::after,
+.roam-toolkit--hint10::after {
+  content: "";
+}
+
+.roam-toolkit-block-mode--highlight {
+  background-color: inherit;
+}

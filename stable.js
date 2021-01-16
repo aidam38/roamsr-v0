@@ -89,8 +89,7 @@ var refreshButton = Object.assign(document.createElement("div"), {
 });
 
 // Comment/uncomment here for debugging
-roamsr.addElement(refreshButton, document
-  .querySelector(".roam-topbar .flex-h-box"));
+// roamsr.addElement(refreshButton, document.querySelector(".roam-topbar .flex-h-box"));
 
 // --- Main helper functions ---
 
@@ -163,8 +162,8 @@ roamsr.calculateNextInterval = (yes) => {
 roamsr.getIntervalHumanReadable = (n) => {
   if (n == -1) return "<10 min"
   else if (n > 0 && n <= 15) return n + " d"
-  else if (n <= 30) return (n/7).toFixed(1) + " w"
-  else if (n <= 365) return (n/30).toFixed(1) + " m" 
+  else if (n <= 30) return (n / 7).toFixed(1) + " w"
+  else if (n <= 365) return (n / 30).toFixed(1) + " m"
 }
 
 // --- Main functions ---
